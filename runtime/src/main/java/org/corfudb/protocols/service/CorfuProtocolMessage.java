@@ -25,7 +25,7 @@ import static org.corfudb.protocols.CorfuProtocolCommon.getUuidMsg;
  * client and server.
  */
 @Slf4j
-public class CorfuProtocolMessage {
+public final class CorfuProtocolMessage {
     // Prevent class from being instantiated
     private CorfuProtocolMessage() {}
 

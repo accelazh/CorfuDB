@@ -203,9 +203,10 @@ public class TestClientRouter implements IClientRouter {
                         log.trace("Registered {} to handle messages of type {}", client, x);
                     });
         } catch (UnsupportedOperationException ex) {
-            log.error("No registered CorfuMsg handler for client {}", client, ex);
+            if (log.isTraceEnabled()) {
+                log.trace("No registered CorfuMsg handler for client {}", client, ex);
+            }
         }
-
 
         if (!client.getHandledCases().isEmpty()) {
             client.getHandledCases()

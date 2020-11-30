@@ -55,7 +55,7 @@ import static org.corfudb.protocols.CorfuProtocolTxResolution.getTxResolutionInf
  * These methods are used by both the client and the server.
  */
 @Slf4j
-public class CorfuProtocolSequencer {
+public final class CorfuProtocolSequencer {
     // It stores the EnumBiMap of the Java and Protobuf TokenTypes for efficient conversions.
     private static final EnumBiMap<TokenType, TokenResponseMsg.TokenType> tokenResponseTypeMap =
             EnumBiMap.create(ImmutableMap.of(

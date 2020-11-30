@@ -151,7 +151,9 @@ public class LogReplicationClientRouter implements IClientRouter {
                         log.info("Registered client to handle messages of type {}", x);
                     });
         } catch (UnsupportedOperationException ex) {
-            log.error("No registered CorfuMsg handler for client {}", client, ex);
+            if (log.isTraceEnabled()) {
+                log.trace("No registered CorfuMsg handler for client {}", client, ex);
+            }
         }
 
         // Register this type
