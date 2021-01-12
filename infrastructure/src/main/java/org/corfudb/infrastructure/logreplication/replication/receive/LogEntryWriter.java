@@ -1,16 +1,13 @@
 package org.corfudb.infrastructure.logreplication.replication.receive;
 
 import lombok.extern.slf4j.Slf4j;
-
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntry;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntryMetadata;
-import org.corfudb.protocols.wireprotocol.logreplication.MessageType;
-
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
 import org.corfudb.protocols.logprotocol.SMREntry;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.CorfuStoreMetadata;
+import org.corfudb.runtime.LogReplication;
+import org.corfudb.runtime.LogReplication.LogReplicationEntryType;
 import org.corfudb.runtime.collections.TxBuilder;
 import org.corfudb.runtime.view.Address;
 import org.corfudb.runtime.view.stream.IStreamView;
@@ -20,6 +17,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+
+import static org.corfudb.protocols.CorfuProtocolCommon.extractOpaqueEntries;
 
 
 /**
@@ -62,10 +61,10 @@ public class LogEntryWriter {
      * @param metadata
      * @throws ReplicationWriterException
      */
-    private void verifyMetadata(LogReplicationEntryMetadata metadata) throws ReplicationWriterException {
-        if (metadata.getMessageMetadataType() != MessageType.LOG_ENTRY_MESSAGE) {
+    private void verifyMetadata(LogReplication.LogReplicationEntryMetadata metadata) throws ReplicationWriterException {
+        if (metadata.getEntryType() != LogReplicationEntryType.LOG_ENTRY_MESSAGE) {
             log.error("Wrong message metadata {}, expecting  type {} snapshot {}", metadata,
-                    MessageType.LOG_ENTRY_MESSAGE, srcGlobalSnapshot);
+                    LogReplicationEntryType.LOG_ENTRY_MESSAGE, srcGlobalSnapshot);
             throw new ReplicationWriterException("wrong type of message");
         }
     }
@@ -74,8 +73,8 @@ public class LogEntryWriter {
      * Convert message data to an MultiObjectSMREntry and write to log.
      * @param txMessage
      */
-    private void processMsg(LogReplicationEntry txMessage) {
-        List<OpaqueEntry> opaqueEntryList = txMessage.getOpaqueEntryList();
+    private void processMsg(LogReplication.LogReplicationEntryMsg txMessage) {
+        List<OpaqueEntry> opaqueEntryList = extractOpaqueEntries(txMessage);
 
         CorfuStoreMetadata.Timestamp timestamp = logReplicationMetadataManager.getTimestamp();
         long persistedTopologyConfigId = logReplicationMetadataManager.query(timestamp, LogReplicationMetadataManager.LogReplicationMetadataType.TOPOLOGY_CONFIG_ID);
@@ -83,7 +82,7 @@ public class LogEntryWriter {
         long persistedSnapshotDone = logReplicationMetadataManager.query(timestamp, LogReplicationMetadataManager.LogReplicationMetadataType.LAST_SNAPSHOT_APPLIED);
         long persistedLogTs = logReplicationMetadataManager.query(timestamp, LogReplicationMetadataManager.LogReplicationMetadataType.LAST_LOG_ENTRY_PROCESSED);
 
-        long topologyConfigId = txMessage.getMetadata().getTopologyConfigId();
+        long topologyConfigId = txMessage.getMetadata().getSiteConfigID();
         long baseSnapshotTs = txMessage.getMetadata().getSnapshotTimestamp();
         long entryTs = txMessage.getMetadata().getTimestamp();
         long prevTs = txMessage.getMetadata().getPreviousTimestamp();
@@ -132,7 +131,7 @@ public class LogEntryWriter {
      * @return last processed message timestamp
      * @throws ReplicationWriterException
      */
-    public long apply(LogReplicationEntry msg) throws ReplicationWriterException {
+    public long apply(LogReplication.LogReplicationEntryMsg msg) throws ReplicationWriterException {
 
         log.debug("Apply log entry {}", msg.getMetadata().getTimestamp());
 

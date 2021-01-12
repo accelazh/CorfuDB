@@ -1,6 +1,7 @@
 package org.corfudb.infrastructure.logreplication.replication.send.logreader;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.protobuf.ByteString;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import lombok.Getter;
@@ -10,9 +11,10 @@ import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
 import org.corfudb.protocols.logprotocol.SMREntry;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntry;
-import org.corfudb.protocols.wireprotocol.logreplication.MessageType;
 import org.corfudb.runtime.CorfuRuntime;
+import org.corfudb.runtime.LogReplication.LogReplicationEntryMetadata;
+import org.corfudb.runtime.LogReplication.LogReplicationEntryMsg;
+import org.corfudb.runtime.LogReplication.LogReplicationEntryType;
 import org.corfudb.runtime.exceptions.TrimmedException;
 import org.corfudb.runtime.view.Address;
 import org.corfudb.runtime.view.ObjectsView;
@@ -31,6 +33,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.corfudb.infrastructure.logreplication.LogReplicationConfig.MAX_DATA_MSG_SIZE_SUPPORTED;
+import static org.corfudb.protocols.CorfuProtocolCommon.generatePayload;
+import static org.corfudb.protocols.CorfuProtocolCommon.getUuidMsg;
 
 @Slf4j
 @NotThreadSafe
@@ -41,7 +45,7 @@ public class StreamsLogEntryReader implements LogEntryReader {
 
     private CorfuRuntime rt;
 
-    private final MessageType MSG_TYPE = MessageType.LOG_ENTRY_MESSAGE;
+    private final LogReplicationEntryType MSG_TYPE = LogReplicationEntryType.LOG_ENTRY_MESSAGE;
 
     // Set of UUIDs for the corresponding streams
     private Set<UUID> streamUUIDs;
@@ -98,11 +102,25 @@ public class StreamsLogEntryReader implements LogEntryReader {
         txOpaqueStream = new TxOpaqueStream(rt);
     }
 
-    private LogReplicationEntry generateMessageWithOpaqueEntryList(List<OpaqueEntry> opaqueEntryList, UUID logEntryRequestId) {
+    private LogReplicationEntryMsg generateMessageWithOpaqueEntryList(
+            List<OpaqueEntry> opaqueEntryList, UUID logEntryRequestId) {
         // Set the last timestamp as the max timestamp
         long currentMsgTs = opaqueEntryList.get(opaqueEntryList.size() - 1).getVersion();
-        LogReplicationEntry txMessage = new LogReplicationEntry(MSG_TYPE, topologyConfigId, logEntryRequestId,
-                currentMsgTs, preMsgTs, globalBaseSnapshot, sequence, opaqueEntryList);
+        LogReplicationEntryMetadata metadata = LogReplicationEntryMetadata.newBuilder()
+                .setEntryType(MSG_TYPE)
+                .setSiteConfigID(topologyConfigId)
+                .setSyncRequestId(getUuidMsg(logEntryRequestId))
+                .setTimestamp(currentMsgTs)
+                .setPreviousTimestamp(preMsgTs)
+                .setSnapshotTimestamp(globalBaseSnapshot)
+                .setSnapshotSyncSeqNum(sequence)
+                .build();
+
+        LogReplicationEntryMsg txMessage = LogReplicationEntryMsg.newBuilder()
+                .setMetadata(metadata)
+                .setData(ByteString.copyFrom(generatePayload(opaqueEntryList)))
+                .build();
+
         preMsgTs = currentMsgTs;
         sequence++;
         log.trace("Generate a log entry message {} with {} transactions ", txMessage.getMetadata(), opaqueEntryList.size());
@@ -173,7 +191,7 @@ public class StreamsLogEntryReader implements LogEntryReader {
     }
 
     @Override
-    public LogReplicationEntry read(UUID logEntryRequestId) throws TrimmedException {
+    public LogReplicationEntryMsg read(UUID logEntryRequestId) throws TrimmedException {
         List<OpaqueEntry> opaqueEntryList = new ArrayList<>();
         int currentEntrySize = 0;
         int currentMsgSize = 0;
@@ -227,7 +245,8 @@ public class StreamsLogEntryReader implements LogEntryReader {
                 return null;
             }
 
-            LogReplicationEntry txMessage = generateMessageWithOpaqueEntryList(opaqueEntryList, logEntryRequestId);
+            LogReplicationEntryMsg txMessage = generateMessageWithOpaqueEntryList(
+                    opaqueEntryList, logEntryRequestId);
             return txMessage;
 
         } catch (Exception e) {

@@ -1,8 +1,7 @@
 package org.corfudb.infrastructure.logreplication;
 
 import org.corfudb.infrastructure.logreplication.replication.send.LogReplicationError;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntry;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationMetadataResponse;
+import org.corfudb.runtime.LogReplication;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -21,7 +20,7 @@ public interface DataSender {
      * @param message LogReplicationEntry representing the data to send across sites.
      * @return
      */
-    CompletableFuture<LogReplicationEntry> send(LogReplicationEntry message);
+    CompletableFuture<LogReplication.LogReplicationEntryMsg> send(LogReplication.LogReplicationEntryMsg message);
 
     /**
      * Application callback on next available messages for transmission to remote cluster.
@@ -29,12 +28,12 @@ public interface DataSender {
      * @param messages list of LogReplicationEntry representing the data to send across sites.
      * @return
      */
-    CompletableFuture<LogReplicationEntry> send(List<LogReplicationEntry> messages);
+    CompletableFuture<LogReplication.LogReplicationEntryMsg> send(List<LogReplication.LogReplicationEntryMsg> messages);
 
     /**
      * Send metadata request to remote cluster
      */
-    CompletableFuture<LogReplicationMetadataResponse> sendMetadataRequest();
+    CompletableFuture<LogReplication.LogReplicationMetadataResponseMsg> sendMetadataRequest();
 
     /**
      * Application callback on error.

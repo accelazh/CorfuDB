@@ -7,14 +7,15 @@ import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.CorfuStoreMetadata;
 import org.corfudb.runtime.ExampleSchemas;
 import org.corfudb.runtime.ExampleSchemas.ExampleValue;
-import org.corfudb.runtime.Messages;
+import org.corfudb.runtime.LogReplication;
+import org.corfudb.runtime.LogReplication.LogReplicationEntryMetadata;
 import org.corfudb.runtime.Queue;
 import org.corfudb.runtime.exceptions.StaleRevisionUpdateException;
 import org.corfudb.runtime.object.transactions.TransactionType;
 import org.corfudb.runtime.object.transactions.TransactionalContext;
+import org.corfudb.runtime.proto.RpcCommon.UuidMsg;
 import org.corfudb.runtime.view.AbstractViewTest;
 import org.corfudb.runtime.ExampleSchemas.ManagedMetadata;
-import org.corfudb.runtime.Messages.Uuid;
 import org.corfudb.runtime.view.Address;
 import org.junit.Test;
 
@@ -64,17 +65,17 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Uuid, ManagedMetadata, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ManagedMetadata, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ManagedMetadata.class,
                 ManagedMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
                 TableOptions.builder().build());
 
         UUID uuid1 = UUID.nameUUIDFromBytes("1".getBytes());
-        Uuid key1 = Uuid.newBuilder()
+        UuidMsg key1 = UuidMsg.newBuilder()
                 .setMsb(uuid1.getMostSignificantBits()).setLsb(uuid1.getLeastSignificantBits())
                 .build();
         ManagedMetadata user_1 = ManagedMetadata.newBuilder().setCreateUser("user_1").build();
@@ -88,7 +89,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Take a snapshot to test snapshot isolation transaction
         final CorfuStoreMetadata.Timestamp timestamp = shimStore.getTimestamp();
-        CorfuStoreEntry<Uuid, ManagedMetadata, ManagedMetadata> entry;
+        CorfuStoreEntry<UuidMsg, ManagedMetadata, ManagedMetadata> entry;
         // Start a dirty read transaction
         try (ManagedTxnContext readWriteTxn = shimStore.tx(someNamespace)) {
             readWriteTxn.putRecord(table, key1,
@@ -122,7 +123,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
             assertThat(entry.getPayload().getCreateUser()).isEqualTo("abc");
         }
         try (ManagedTxnContext readWriteTxn = shimStore.tx(someNamespace)) {
-            Uuid key2 = null;
+            UuidMsg key2 = null;
             assertThatThrownBy( () -> readWriteTxn.putRecord(tableName, key2, null, null))
                     .isExactlyInstanceOf(IllegalArgumentException.class);
         }
@@ -150,17 +151,17 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Uuid, ExampleValue, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleValue, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleValue.class,
                 ManagedMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
                 TableOptions.builder().build());
 
         UUID uuid1 = UUID.nameUUIDFromBytes("1".getBytes());
-        Uuid key1 = Uuid.newBuilder()
+        UuidMsg key1 = UuidMsg.newBuilder()
                 .setMsb(uuid1.getMostSignificantBits()).setLsb(uuid1.getLeastSignificantBits())
                 .build();
         ManagedMetadata user_1 = ManagedMetadata.newBuilder().setCreateUser("user_1").build();
@@ -183,7 +184,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         }
 
         try (ManagedTxnContext readWriteTxn = shimStore.tx(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleValue, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleValue, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(table, "anotherKey", eventTime);
             assertThat(entries.size()).isEqualTo(1);
             assertThat(entries.get(0).getPayload().getPayload()).isEqualTo("abc");
@@ -191,7 +192,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         }
 
         try (ManagedTxnContext readWriteTxn = shimStore.tx(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleValue, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleValue, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(table, "uuid", uuidSecondaryKey);
             assertThat(entries.size()).isEqualTo(1);
             assertThat(entries.get(0).getPayload().getPayload()).isEqualTo("abc");
@@ -221,10 +222,10 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final String tableName = "ManagedMetadata";
 
         // Create & Register the table.
-        Table<Uuid, ExampleValue, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleValue, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleValue.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build());
@@ -242,7 +243,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
             }
 
             UUID uuid = UUID.randomUUID();
-            Uuid key = Uuid.newBuilder()
+            UuidMsg key = UuidMsg.newBuilder()
                     .setMsb(uuid.getMostSignificantBits()).setLsb(uuid.getLeastSignificantBits())
                     .build();
 
@@ -266,12 +267,12 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all even entries
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleValue, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleValue, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(table, "non_primitive_field_level_0.key_1_level_1", even);
             assertThat(entries.size()).isEqualTo(totalRecords/2);
-            Iterator<CorfuStoreEntry<Uuid, ExampleValue, ManagedMetadata>> it = entries.iterator();
+            Iterator<CorfuStoreEntry<UuidMsg, ExampleValue, ManagedMetadata>> it = entries.iterator();
             while(it.hasNext()) {
-                CorfuStoreEntry<Uuid, ExampleValue, ManagedMetadata> entry = it.next();
+                CorfuStoreEntry<UuidMsg, ExampleValue, ManagedMetadata> entry = it.next();
                 assertThat(evenRecordIndexes).contains(entry.getPayload().getEntryIndex());
                 evenRecordIndexes.remove(entry.getPayload().getEntryIndex());
             }
@@ -282,11 +283,11 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index from second level (nested), retrieve from database 'upper half'
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleValue, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleValue, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(table, "non_primitive_field_level_0.key_2_level_1.key_1_level_2", "upper half");
             assertThat(entries.size()).isEqualTo(totalRecords/2);
             long sum = 0;
-            Iterator<CorfuStoreEntry<Uuid, ExampleValue, ManagedMetadata>> it = entries.iterator();
+            Iterator<CorfuStoreEntry<UuidMsg, ExampleValue, ManagedMetadata>> it = entries.iterator();
             while(it.hasNext()) {
                 sum = sum + it.next().getPayload().getEntryIndex();
             }
@@ -319,10 +320,10 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final String tableName = "ManagedMetadata";
 
         // Create & Register the table.
-        Table<Uuid, ExampleSchemas.ClassRoom, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleSchemas.ClassRoom, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.ClassRoom.class,
                 ManagedMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
@@ -336,7 +337,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         for (int i = 0; i < totalClassRooms; i++) {
             UUID uuid = UUID.randomUUID();
-            Uuid key = Uuid.newBuilder()
+            UuidMsg key = UuidMsg.newBuilder()
                     .setMsb(uuid.getMostSignificantBits()).setLsb(uuid.getLeastSignificantBits())
                     .build();
 
@@ -359,7 +360,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all classRooms that have young students
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.ClassRoom, ManagedMetadata>> classRooms = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.ClassRoom, ManagedMetadata>> classRooms = readWriteTxn
                     .getByIndex(table, "students.age", youngStudent);
             // Since only even indexed classRooms have youngStudents, we expect half of them to appear
             assertThat(classRooms.size()).isEqualTo(totalClassRooms/2);
@@ -388,10 +389,10 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final String tableName = "CA-Networks";
 
         // Create & Register the table.
-        Table<Uuid, ExampleSchemas.Network, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleSchemas.Network, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.Network.class,
                 ManagedMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
@@ -421,7 +422,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         for (int i = 0; i < totalNetworks; i++) {
             UUID id = UUID.randomUUID();
-            Uuid networkId = Uuid.newBuilder()
+            UuidMsg networkId = UuidMsg.newBuilder()
                     .setMsb(id.getMostSignificantBits()).setLsb(id.getLeastSignificantBits())
                     .build();
 
@@ -444,7 +445,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all networks which have RouterA
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Network, ManagedMetadata>> networks = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Network, ManagedMetadata>> networks = readWriteTxn
                     .getByIndex(table, "devices.router", routerA);
             assertThat(networks.size()).isEqualTo(totalNetworks/2);
             readWriteTxn.commit();
@@ -452,7 +453,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all networks which have RouterC
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Network, ManagedMetadata>> networks = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Network, ManagedMetadata>> networks = readWriteTxn
                     .getByIndex(table, "devices.router", routerC);
             assertThat(networks.size()).isEqualTo(totalNetworks);
             readWriteTxn.commit();
@@ -481,10 +482,10 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final String tableName = "Company";
 
         // Create & Register the table.
-        Table<Uuid, ExampleSchemas.Company, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleSchemas.Company, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.Company.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build());
@@ -545,7 +546,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         for (int i = 0; i < totalCompanies; i++) {
             UUID id = UUID.randomUUID();
-            Uuid networkId = Uuid.newBuilder()
+            UuidMsg networkId = UuidMsg.newBuilder()
                     .setMsb(id.getMostSignificantBits()).setLsb(id.getLeastSignificantBits())
                     .build();
 
@@ -570,7 +571,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all Companies that have Department of type 1
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Company, ManagedMetadata>> companiesDepartmentType1 = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Company, ManagedMetadata>> companiesDepartmentType1 = readWriteTxn
                     .getByIndex(table, "office.departments", dpt_1);
             assertThat(companiesDepartmentType1.size()).isEqualTo(totalCompanies/2);
             readWriteTxn.commit();
@@ -578,7 +579,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all Companies that have Department of Type 4 (all)
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Company, ManagedMetadata>> companiesDepartmentType4 = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Company, ManagedMetadata>> companiesDepartmentType4 = readWriteTxn
                     .getByIndex(table, "office.departments", dpt_4);
             assertThat(companiesDepartmentType4.size()).isEqualTo(totalCompanies);
             readWriteTxn.commit();
@@ -608,10 +609,10 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final String tableName = "Company-Personal";
 
         // Create & Register the table.
-        Table<Uuid, ExampleSchemas.Person, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleSchemas.Person, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.Person.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build());
@@ -626,7 +627,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         for (int i = 0; i < people; i++) {
             UUID uuid = UUID.randomUUID();
-            Uuid key = Uuid.newBuilder()
+            UuidMsg key = UuidMsg.newBuilder()
                     .setMsb(uuid.getMostSignificantBits()).setLsb(uuid.getLeastSignificantBits())
                     .build();
 
@@ -648,7 +649,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all even entries
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Person, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Person, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(table, "phoneNumber.mobile", mobileForEvens);
             assertThat(entries.size()).isEqualTo(people/2);
             readWriteTxn.commit();
@@ -656,7 +657,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all entries with common mobile number
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Person, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Person, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(table, "phoneNumber.mobile", mobileCommonBoth);
             assertThat(entries.size()).isEqualTo(people);
             readWriteTxn.commit();
@@ -685,10 +686,10 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final String tableName = "Offices";
 
         // Create & Register the table.
-        Table<Uuid, ExampleSchemas.Office, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleSchemas.Office, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.Office.class,
                 ManagedMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
@@ -709,7 +710,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         for (int i = 0; i < numOffices; i++) {
             UUID id = UUID.randomUUID();
-            Uuid officeId = Uuid.newBuilder()
+            UuidMsg officeId = UuidMsg.newBuilder()
                     .setMsb(id.getMostSignificantBits()).setLsb(id.getLeastSignificantBits())
                     .build();
 
@@ -747,7 +748,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all offices which have an evenPhoneNumber
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Office, ManagedMetadata>> offices = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Office, ManagedMetadata>> offices = readWriteTxn
                     .getByIndex(table, "departments.members.phoneNumbers", evenPhoneNumber);
             assertThat(offices.size()).isEqualTo(numOffices/2);
             readWriteTxn.commit();
@@ -755,7 +756,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve from database all entries with common mobile number
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Office, ManagedMetadata>> offices = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Office, ManagedMetadata>> offices = readWriteTxn
                     .getByIndex(table, "departments.members.phoneNumbers", commonPhoneNumber);
             assertThat(offices.size()).isEqualTo(numOffices);
             readWriteTxn.commit();
@@ -786,10 +787,10 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final String tableName = "School";
 
         // Create & Register the table.
-        Table<Uuid, ExampleSchemas.School, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleSchemas.School, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.School.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build());
@@ -805,7 +806,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         for (int i = 0; i < numSchools; i++) {
             UUID id = UUID.randomUUID();
-            Uuid schoolId = Uuid.newBuilder()
+            UuidMsg schoolId = UuidMsg.newBuilder()
                     .setMsb(id.getMostSignificantBits()).setLsb(id.getLeastSignificantBits())
                     .build();
 
@@ -834,7 +835,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Add one additional school with 1 classRoom and no Desks
         UUID id = UUID.randomUUID();
-        Uuid schoolId = Uuid.newBuilder()
+        UuidMsg schoolId = UuidMsg.newBuilder()
                 .setMsb(id.getMostSignificantBits()).setLsb(id.getLeastSignificantBits())
                 .build();
 
@@ -854,7 +855,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve number of schools that have classrooms with odd number of desks
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.School, ManagedMetadata>> schools = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.School, ManagedMetadata>> schools = readWriteTxn
                     .getByIndex(table, "classRooms.classInfra.numberDesks", oddNumDesks);
             assertThat(schools.size()).isEqualTo(numSchools/2);
             readWriteTxn.commit();
@@ -862,7 +863,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve number of schools that have classrooms with no desks
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.School, ManagedMetadata>> schools = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.School, ManagedMetadata>> schools = readWriteTxn
                     .getByIndex(table, "classRooms.classInfra.numberDesks", noDesks);
             assertThat(schools.size()).isEqualTo(1);
             readWriteTxn.commit();
@@ -870,7 +871,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index, retrieve number of schools that have classrooms with computers (repeated primitive field)
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.School, ManagedMetadata>> schools = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.School, ManagedMetadata>> schools = readWriteTxn
                     .getByIndex(table, "classRooms.classInfra.others", "computers");
             assertThat(schools.size()).isEqualTo(numSchools/others.length);
             readWriteTxn.commit();
@@ -903,7 +904,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         assertThrows(IllegalArgumentException.class, () -> shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.InvalidExampleValue.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build()));
@@ -933,7 +934,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         assertThrows(IllegalArgumentException.class, () -> shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.InvalidNestedSecondaryIndex.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build()));
@@ -963,7 +964,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         assertThrows(UnsupportedOperationException.class, () -> shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.InvalidFullNestedSecondaryIndex.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build()));
@@ -991,10 +992,10 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final long kidsBaseAge = 4L;
 
         // Create & Register the table.
-        Table<Uuid, ExampleSchemas.Adult, ManagedMetadata> adultsTable = shimStore.openTable(
+        Table<UuidMsg, ExampleSchemas.Adult, ManagedMetadata> adultsTable = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.Adult.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build());
@@ -1003,7 +1004,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         for (int i = 0; i < adultCount; i++) {
             UUID adultId = UUID.randomUUID();
-            Uuid adultKey = Uuid.newBuilder()
+            UuidMsg adultKey = UuidMsg.newBuilder()
                     .setMsb(adultId.getMostSignificantBits()).setLsb(adultId.getLeastSignificantBits())
                     .build();
 
@@ -1029,7 +1030,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index (default alias), retrieve from database all adults with adultsBaseAge
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(adultsTable, "age", adultBaseAge);
             assertThat(entries.size()).isEqualTo(adultCount/2);
             readWriteTxn.commit();
@@ -1037,7 +1038,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index (using fully qualified name), retrieve from database all adults with adultsBaseAge
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(adultsTable, "person.age", adultBaseAge);
             assertThat(entries.size()).isEqualTo(adultCount/2);
             readWriteTxn.commit();
@@ -1045,7 +1046,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index (custom alias), retrieve from database all adults with kids on age 'kidsBaseAge'
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(adultsTable, "kidsAge", kidsBaseAge);
             assertThat(entries.size()).isEqualTo(adultCount/2);
             readWriteTxn.commit();
@@ -1053,7 +1054,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index (fully qualified name), retrieve from database all adults with kids on age 'kidsBaseAge'
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(adultsTable, "person.children.child.age", kidsBaseAge);
             assertThat(entries.size()).isEqualTo(adultCount/2);
             readWriteTxn.commit();
@@ -1061,7 +1062,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Get by secondary index (custom alias), retrieve from database all adults with kids on age '2' (non existent)
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.Adult, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(adultsTable, "kidsAge", 2);
             assertThat(entries.size()).isZero();
             readWriteTxn.commit();
@@ -1090,7 +1091,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         assertThrows(IllegalArgumentException.class, () -> shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.InvalidAdultDefaultIndexName.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build()));
@@ -1118,7 +1119,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         assertThrows(IllegalArgumentException.class, () -> shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.InvalidAdultCustomIndexName.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build()));
@@ -1145,16 +1146,16 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         final String tableName = "ManagedMetadata";
 
         // Create & Register the table.
-        Table<Uuid, ExampleSchemas.NotNestedSecondaryIndex, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ExampleSchemas.NotNestedSecondaryIndex, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ExampleSchemas.NotNestedSecondaryIndex.class,
                 ManagedMetadata.class,
                 TableOptions.builder().build());
 
         UUID id = UUID.randomUUID();
-        Uuid key1 = Uuid.newBuilder()
+        UuidMsg key1 = UuidMsg.newBuilder()
                 .setMsb(id.getMostSignificantBits()).setLsb(id.getLeastSignificantBits())
                 .build();
         ManagedMetadata user = ManagedMetadata.newBuilder().setCreateUser("user_UT").build();
@@ -1176,7 +1177,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         }
 
         try (ManagedTxnContext readWriteTxn = shimStore.txn(someNamespace)) {
-            List<CorfuStoreEntry<Uuid, ExampleSchemas.NotNestedSecondaryIndex, ManagedMetadata>> entries = readWriteTxn
+            List<CorfuStoreEntry<UuidMsg, ExampleSchemas.NotNestedSecondaryIndex, ManagedMetadata>> entries = readWriteTxn
                     .getByIndex(table, "field3", 0L);
             assertThat(entries.size()).isEqualTo(1);
             assertThat(entries.get(0).getPayload().getField1()).isEqualTo("record_1");
@@ -1208,17 +1209,17 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Uuid, ManagedMetadata, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ManagedMetadata, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ManagedMetadata.class,
                 ManagedMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
                 TableOptions.builder().build());
 
         UUID uuid1 = UUID.nameUUIDFromBytes("1".getBytes());
-        Uuid key1 = Uuid.newBuilder()
+        UuidMsg key1 = UuidMsg.newBuilder()
                 .setMsb(uuid1.getMostSignificantBits()).setLsb(uuid1.getLeastSignificantBits())
                 .build();
         ManagedMetadata user_1 = ManagedMetadata.newBuilder().setCreateUser("user_1").build();
@@ -1236,7 +1237,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
             txn.commit();
         }
 
-        CorfuStoreEntry<Uuid, ManagedMetadata, ManagedMetadata> entry;
+        CorfuStoreEntry<UuidMsg, ManagedMetadata, ManagedMetadata> entry;
         try (ManagedTxnContext queryTxn = shimStore.tx(someNamespace)) {
             entry = queryTxn.getRecord(table, key1);
         }
@@ -1299,18 +1300,18 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Uuid, ManagedMetadata, ManagedMetadata> table =
+        Table<UuidMsg, ManagedMetadata, ManagedMetadata> table =
                 shimStore.openTable(
                         someNamespace,
                         tableName,
-                        Uuid.class,
+                        UuidMsg.class,
                         ManagedMetadata.class,
                         null,
                         // TableOptions includes option to choose - Memory/Disk based corfu table.
                         TableOptions.builder().build());
 
         UUID uuid1 = UUID.nameUUIDFromBytes("1".getBytes());
-        Uuid key1 = Uuid.newBuilder().setMsb(uuid1.getMostSignificantBits()).setLsb(uuid1.getLeastSignificantBits()).build();
+        UuidMsg key1 = UuidMsg.newBuilder().setMsb(uuid1.getMostSignificantBits()).setLsb(uuid1.getLeastSignificantBits()).build();
         ManagedTxnContext txn = shimStore.tx(someNamespace);
         txn.putRecord(tableName,
                 key1,
@@ -1370,16 +1371,16 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Uuid, ManagedMetadata, Messages.LogReplicationEntryMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ManagedMetadata, LogReplicationEntryMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ManagedMetadata.class,
-                Messages.LogReplicationEntryMetadata.class,
+                LogReplicationEntryMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
                 TableOptions.builder().build());
 
-        Uuid key = Uuid.newBuilder().setLsb(0L).setMsb(0L).build();
+        UuidMsg key = UuidMsg.newBuilder().setLsb(0L).setMsb(0L).build();
         ManagedMetadata value = ManagedMetadata.newBuilder().setCreateUser("simpleValue").build();
         final String something = "double_nested_metadata_field";
         final int one = 1; // Frankly stupid but i could not figure out how to selectively disable checkstyle
@@ -1387,9 +1388,9 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         try (ManagedTxnContext txn = shimStore.tx(someNamespace)) {
             txn.putRecord(tableName, key, value,
-                    Messages.LogReplicationEntryMetadata.newBuilder()
+                    LogReplicationEntryMetadata.newBuilder()
                             .setSiteConfigID(twelve)
-                            .setSyncRequestId(Uuid.newBuilder().setMsb(one).build())
+                            .setSyncRequestId(UuidMsg.newBuilder().setMsb(one).build())
                             .build());
             txn.commit();
         }
@@ -1397,12 +1398,12 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         // Update the record, validate that metadata fields not set, get merged with existing
         try (ManagedTxnContext txn = shimStore.tx(someNamespace)) {
             txn.putRecord(tableName, key, value,
-                    Messages.LogReplicationEntryMetadata.newBuilder()
+                    LogReplicationEntryMetadata.newBuilder()
                             .setTimestamp(one+twelve)
                             .build());
             txn.commit();
         }
-        CorfuStoreEntry<Uuid, ManagedMetadata, Messages.LogReplicationEntryMetadata> entry = null;
+        CorfuStoreEntry<UuidMsg, ManagedMetadata, LogReplicationEntryMetadata> entry = null;
         try (ManagedTxnContext queryTxn = shimStore.tx(someNamespace)) {
             entry = queryTxn.getRecord(table, key);
         }
@@ -1442,16 +1443,16 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Uuid, ManagedMetadata, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ManagedMetadata, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ManagedMetadata.class,
                 ManagedMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
                 TableOptions.builder().build());
 
-        Uuid key = Uuid.newBuilder().setLsb(0L).setMsb(0L).build();
+        UuidMsg key = UuidMsg.newBuilder().setLsb(0L).setMsb(0L).build();
         ManagedMetadata value = ManagedMetadata.newBuilder().setCreateUser("simpleValue").build();
 
         try (ManagedTxnContext txn = shimStore.tx(someNamespace)) {
@@ -1459,7 +1460,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
             txn.commit();
         }
 
-        CorfuStoreEntry<Uuid, ManagedMetadata, ManagedMetadata> entry;
+        CorfuStoreEntry<UuidMsg, ManagedMetadata, ManagedMetadata> entry;
         try (ManagedTxnContext query = shimStore.tx(someNamespace)) {
             entry = query.getRecord(tableName, key);
         }
@@ -1542,21 +1543,21 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Uuid, ManagedMetadata, ManagedMetadata> table = shimStore.openTable(
+        Table<UuidMsg, ManagedMetadata, ManagedMetadata> table = shimStore.openTable(
                 someNamespace,
                 tableName,
-                Uuid.class,
+                UuidMsg.class,
                 ManagedMetadata.class,
                 ManagedMetadata.class,
                 // TableOptions includes option to choose - Memory/Disk based corfu table.
                 TableOptions.builder().build());
 
-        Uuid key = Uuid.newBuilder().setLsb(0L).setMsb(0L).build();
+        UuidMsg key = UuidMsg.newBuilder().setLsb(0L).setMsb(0L).build();
         ManagedMetadata value = ManagedMetadata.newBuilder().setCreateUser("simpleValue").build();
 
         class NestedTxnTester {
             public void nestedQuery() {
-                CorfuStoreEntry<Uuid, ManagedMetadata, ManagedMetadata> entry;
+                CorfuStoreEntry<UuidMsg, ManagedMetadata, ManagedMetadata> entry;
                 try (ManagedTxnContext rwTxn = shimStore.txn(someNamespace)) {
                     entry = rwTxn.getRecord(tableName, key);
                     // Nested transactions can also supply commitCallbacks that will be invoked when
@@ -1595,7 +1596,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
         corfuTable.put("k1", "a"); // Load non-CorfuStore data
         corfuTable.put("k2", "ab");
         corfuTable.put("k3", "b");
-        CorfuStoreEntry<Uuid, ManagedMetadata, ManagedMetadata> entry;
+        CorfuStoreEntry<UuidMsg, ManagedMetadata, ManagedMetadata> entry;
         try (ManagedTxnContext nestedTxn = shimStore.txn(someNamespace)) {
             nestedTxn.putRecord(tableName, key, ManagedMetadata.newBuilder().setLastModifiedUser("secondUser").build());
             entry = nestedTxn.getRecord(tableName, key);
@@ -1629,17 +1630,17 @@ public class CorfuStoreShimTest extends AbstractViewTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Messages.Uuid, Messages.Uuid, Message> conflictTable =
+        Table<UuidMsg, UuidMsg, Message> conflictTable =
                 shimStore.openTable(
                         someNamespace,
                         conflictTableName,
-                        Messages.Uuid.class,
-                        Messages.Uuid.class,
+                        UuidMsg.class,
+                        UuidMsg.class,
                         null,
                         // TableOptions includes option to choose - Memory/Disk based corfu table.
                         TableOptions.builder().build());
 
-        Messages.Uuid key = Messages.Uuid.newBuilder().setLsb(0L).setMsb(0L).build();
+        UuidMsg key = UuidMsg.newBuilder().setLsb(0L).setMsb(0L).build();
         ExampleSchemas.ManagedMetadata value = ExampleSchemas.ManagedMetadata.newBuilder().setCreateUser("simpleValue").build();
 
         Table<Queue.CorfuGuidMsg, ExampleSchemas.ExampleValue, Queue.CorfuQueueMetadataMsg> corfuQueue =
@@ -1654,7 +1655,7 @@ public class CorfuStoreShimTest extends AbstractViewTest {
             final int two = 2;
             try (ManagedTxnContext txn = shimStore.txn(someNamespace)) {
                 long coinToss = new Random().nextLong() % two;
-                Messages.Uuid conflictKey = Messages.Uuid.newBuilder().setMsb(coinToss).build();
+                UuidMsg conflictKey = UuidMsg.newBuilder().setMsb(coinToss).build();
                 txn.putRecord(conflictTable, conflictKey, conflictKey);
                 txn.enqueue(corfuQueue, queueData);
                 if (coinToss > 0) {

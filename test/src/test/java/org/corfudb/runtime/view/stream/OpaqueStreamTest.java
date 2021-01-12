@@ -1,12 +1,18 @@
 package org.corfudb.runtime.view.stream;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.corfudb.protocols.CorfuProtocolCommon.extractOpaqueEntries;
+import static org.corfudb.protocols.CorfuProtocolCommon.generatePayload;
 
 
 import com.google.common.reflect.TypeToken;
+
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
+import org.assertj.core.api.Assertions;
 import org.corfudb.CustomSerializer;
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
 import org.corfudb.protocols.wireprotocol.Token;
@@ -62,6 +68,44 @@ public class OpaqueStreamTest extends AbstractViewTest {
             log.debug(entry.getVersion() + " " + entry.getEntries());
         });
 
+    }
+
+    @Test
+    public void serDeSer() {
+        CorfuRuntime rt = getDefaultRuntime();
+
+        ISerializer customSerializer = new CustomSerializer((byte) (Serializers.SYSTEM_SERIALIZERS_COUNT + 2));
+        Serializers.registerSerializer(customSerializer);
+
+        UUID streamId = CorfuRuntime.getStreamID("stream1");
+
+        CorfuTable<Integer, Integer> map = rt.getObjectsView()
+                .build()
+                .setStreamID(streamId)
+                .setTypeToken(new TypeToken<CorfuTable<Integer, Integer>>() {})
+                .setSerializer(customSerializer)
+                .open() ;
+
+
+        rt.getObjectsView().TXBegin();
+        final int key1 = 1;
+        final int key2 = 2;
+        final int key3 = 3;
+        map.put(key1, key1);
+        map.put(key2, key2);
+        map.put(key3, key3);
+        rt.getObjectsView().TXEnd();
+
+
+        Serializers.removeSerializer(customSerializer);
+
+        CorfuRuntime rt2 = getNewRuntime(getDefaultNode()).connect();
+
+        IStreamView sv = rt2.getStreamsView().get(streamId);
+        OpaqueStream opaqueStream = new OpaqueStream(rt2, sv);
+        final long snapshot = 100;
+        List<OpaqueEntry> entries = opaqueStream.streamUpTo(snapshot).collect(Collectors.toList());
+        Assertions.assertThat(extractOpaqueEntries(generatePayload(entries)).size()).isEqualTo(entries.size());
     }
 
     @Test

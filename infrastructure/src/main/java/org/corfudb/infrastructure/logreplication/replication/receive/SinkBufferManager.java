@@ -1,10 +1,7 @@
 package org.corfudb.infrastructure.logreplication.replication.receive;
 
 import lombok.extern.slf4j.Slf4j;
-
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntry;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntryMetadata;
-import org.corfudb.protocols.wireprotocol.logreplication.MessageType;
+import org.corfudb.runtime.LogReplication;
 
 import java.util.HashMap;
 
@@ -27,7 +24,7 @@ public abstract class SinkBufferManager {
      * For logEntry buffer, the key is the entry's previousTimeStamp
      * For Snapshot buffer, the key is the previous entry's snapshotSeqNumber
      */
-    public HashMap<Long, LogReplicationEntry> buffer;
+    public HashMap<Long, LogReplication.LogReplicationEntryMsg> buffer;
 
     /*
      * While processing a message in the buffer, it will call
@@ -38,7 +35,7 @@ public abstract class SinkBufferManager {
     /*
      * Could be LOG_ENTRY or SNAPSHOT
      */
-    public MessageType type;
+    public LogReplication.LogReplicationEntryType type;
 
     /*
      * The max number of entries in the buffer.
@@ -81,7 +78,10 @@ public abstract class SinkBufferManager {
      * @param lastProcessedSeq
      * @param sinkManager
      */
-    public SinkBufferManager(MessageType type, int ackCycleTime, int ackCycleCnt, int size, long lastProcessedSeq, LogReplicationSinkManager sinkManager) {
+    public SinkBufferManager(LogReplication.LogReplicationEntryType type,
+                             int ackCycleTime, int ackCycleCnt,
+                             int size, long lastProcessedSeq,
+                             LogReplicationSinkManager sinkManager) {
         this.type = type;
         this.ackCycleTime = ackCycleTime;
         this.ackCycleCnt = ackCycleCnt;
@@ -118,7 +118,7 @@ public abstract class SinkBufferManager {
      * If the message is not the expected message, put the entry into the buffer if there is space.
      * @param dataMessage
      */
-    public LogReplicationEntry processMsgAndBuffer(LogReplicationEntry dataMessage) {
+    public LogReplication.LogReplicationEntryMsg processMsgAndBuffer(LogReplication.LogReplicationEntryMsg dataMessage) {
 
         if (!verifyMessageType(dataMessage)) {
             log.warn("Received invalid message type {}", dataMessage.getMetadata());
@@ -144,9 +144,9 @@ public abstract class SinkBufferManager {
          * Send Ack with lastProcessedSeq
          */
         if (shouldAck()) {
-            LogReplicationEntryMetadata metadata = generateAckMetadata(dataMessage);
+            LogReplication.LogReplicationEntryMetadata metadata = generateAckMetadata(dataMessage);
             log.trace("Sending an ACK {}", metadata);
-            return new LogReplicationEntry(metadata);
+            return LogReplication.LogReplicationEntryMsg.newBuilder().setMetadata(metadata).build();
         }
 
         return null;
@@ -160,26 +160,26 @@ public abstract class SinkBufferManager {
      * @param entry
      * @return
      */
-    public abstract long getPreSeq(LogReplicationEntry entry);
+    public abstract long getPreSeq(LogReplication.LogReplicationEntryMsg entry);
 
     /**
      * Get the current message's sequence.
      * @param entry
      * @return
      */
-    public abstract long getCurrentSeq(LogReplicationEntry entry);
+    public abstract long getCurrentSeq(LogReplication.LogReplicationEntryMsg entry);
 
     /**
      * Make an Ack with the lastProcessedSeq
      * @param entry
      * @return
      */
-    public abstract LogReplicationEntryMetadata generateAckMetadata(LogReplicationEntry entry);
+    public abstract LogReplication.LogReplicationEntryMetadata generateAckMetadata(LogReplication.LogReplicationEntryMsg entry);
 
     /*
      * Verify if the message is the correct type.
      * @param entry
      * @return
      */
-    public abstract boolean verifyMessageType(LogReplicationEntry entry);
+    public abstract boolean verifyMessageType(LogReplication.LogReplicationEntryMsg entry);
 }

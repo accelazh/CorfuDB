@@ -625,6 +625,11 @@ public class NettyClientRouter extends SimpleChannelInboundHandler<Object> imple
         return cfTimeout;
     }
 
+    @Override
+    public <T> CompletableFuture<T> sendRequestAndGetCompletable(@Nonnull RequestPayloadMsg payload, @Nonnull String endpoint) {
+        throw new UnsupportedOperationException("Unsupported API.");
+    }
+
     /**
      * Send a one way message, without adding a completable future.
      *

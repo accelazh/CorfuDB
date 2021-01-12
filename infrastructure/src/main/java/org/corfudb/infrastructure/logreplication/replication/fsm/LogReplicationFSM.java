@@ -322,7 +322,7 @@ public class LogReplicationFSM {
 
             try {
                 LogReplicationState newState = state.processEvent(event);
-                log.trace("Transition from {} to {}", state, newState);
+                log.info("Transition from {} to {}", state, newState);
                 transition(state, newState);
                 state = newState;
                 numTransitions.setValue(numTransitions.getValue() + 1);

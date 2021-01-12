@@ -11,6 +11,14 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.Unpooled;
+import org.corfudb.common.compression.Codec;
+import org.corfudb.protocols.logprotocol.CheckpointEntry.CheckpointEntryType;
+import org.corfudb.runtime.exceptions.SerializerException;
+import org.corfudb.runtime.view.Layout;
+import org.corfudb.runtime.view.stream.StreamAddressSpace;
+import org.corfudb.util.JsonUtils;
+import org.roaringbitmap.longlong.Roaring64NavigableMap;
+
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.invoke.CallSite;
@@ -27,15 +35,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import org.corfudb.common.compression.Codec;
-import org.corfudb.protocols.logprotocol.CheckpointEntry.CheckpointEntryType;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntryMetadata;
-import org.corfudb.protocols.wireprotocol.logreplication.MessageType;
-import org.corfudb.runtime.exceptions.SerializerException;
-import org.corfudb.runtime.view.Layout;
-import org.corfudb.runtime.view.stream.StreamAddressSpace;
-import org.corfudb.util.JsonUtils;
-import org.roaringbitmap.longlong.Roaring64NavigableMap;
 
 /**
  * Created by mwei on 8/1/16.
@@ -96,17 +95,6 @@ public interface ICorfuPayload<T> {
                             throw new SerializerException("Exception when attempting to " +
                                     "deserialize stream address space.", ioe);
                         }
-                    })
-                    .put(LogReplicationEntryMetadata.class, buffer -> {
-                        LogReplicationEntryMetadata metadata = new LogReplicationEntryMetadata();
-                        metadata.setTopologyConfigId(buffer.readLong());
-                        metadata.setMessageMetadataType(MessageType.fromValue(buffer.readInt()));
-                        metadata.setTimestamp(buffer.readLong());
-                        metadata.setPreviousTimestamp(buffer.readLong());
-                        metadata.setSyncRequestId(new UUID(buffer.readLong(), buffer.readLong()));
-                        metadata.setSnapshotTimestamp(buffer.readLong());
-                        metadata.setSnapshotSyncSeqNum(buffer.readLong());
-                        return metadata;
                     })
                     .build()
     );
@@ -397,15 +385,6 @@ public interface ICorfuPayload<T> {
             } catch (IOException ioe) {
                 throw new SerializerException("Unexpected error while serializing to a byte array");
             }
-        } else if (payload instanceof LogReplicationEntryMetadata) {
-            LogReplicationEntryMetadata metadata = (LogReplicationEntryMetadata) payload;
-            buffer.writeLong(metadata.getTopologyConfigId());
-            buffer.writeInt(metadata.getMessageMetadataType().getVal());
-            buffer.writeLong(metadata.getTimestamp());
-            buffer.writeLong(metadata.getPreviousTimestamp());
-            serialize(buffer, metadata.getSyncRequestId());
-            buffer.writeLong(metadata.getSnapshotTimestamp());
-            buffer.writeLong(metadata.getSnapshotSyncSeqNum());
         } else {
             throw new RuntimeException("Unknown class " + payload.getClass() + " for serialization");
         }

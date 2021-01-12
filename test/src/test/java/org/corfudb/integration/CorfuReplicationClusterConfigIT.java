@@ -18,6 +18,7 @@ import org.corfudb.runtime.collections.CorfuTable;
 import org.corfudb.runtime.collections.Table;
 import org.corfudb.runtime.collections.TableOptions;
 import org.corfudb.runtime.exceptions.unrecoverable.UnrecoverableCorfuInterruptedError;
+import org.corfudb.runtime.proto.RpcCommon;
 import org.corfudb.util.Sleep;
 import org.junit.After;
 import org.junit.Before;
@@ -71,7 +72,7 @@ public class CorfuReplicationClusterConfigIT extends AbstractIT {
 
     private CorfuStore activeCorfuStore;
     private CorfuStore standbyCorfuStore;
-    private Table<Messages.Uuid, Messages.Uuid, Messages.Uuid> configTable;
+    private Table<RpcCommon.UuidMsg, RpcCommon.UuidMsg, RpcCommon.UuidMsg> configTable;
 
     @Before
     public void setUp() throws Exception {
@@ -110,7 +111,7 @@ public class CorfuReplicationClusterConfigIT extends AbstractIT {
 
         configTable = activeCorfuStore.openTable(
                 DefaultClusterManager.CONFIG_NAMESPACE, DefaultClusterManager.CONFIG_TABLE_NAME,
-                Messages.Uuid.class, Messages.Uuid.class, Messages.Uuid.class,
+                RpcCommon.UuidMsg.class, RpcCommon.UuidMsg.class, RpcCommon.UuidMsg.class,
                 TableOptions.builder().build()
         );
 

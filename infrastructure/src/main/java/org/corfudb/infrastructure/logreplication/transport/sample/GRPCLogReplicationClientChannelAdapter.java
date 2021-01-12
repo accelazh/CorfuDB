@@ -5,16 +5,17 @@ import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-
-import org.corfudb.infrastructure.logreplication.infrastructure.ClusterDescriptor;
 import org.corfudb.infrastructure.logreplication.LogReplicationChannelGrpc;
-import org.corfudb.infrastructure.logreplication.LogReplicationChannelGrpc.LogReplicationChannelStub;
-import org.corfudb.infrastructure.logreplication.runtime.LogReplicationClientRouter;
-import org.corfudb.runtime.Messages.CorfuMessage;
 import org.corfudb.infrastructure.logreplication.LogReplicationChannelGrpc.LogReplicationChannelBlockingStub;
+import org.corfudb.infrastructure.logreplication.LogReplicationChannelGrpc.LogReplicationChannelStub;
+import org.corfudb.infrastructure.logreplication.infrastructure.ClusterDescriptor;
+import org.corfudb.infrastructure.logreplication.runtime.LogReplicationClientRouter;
 import org.corfudb.infrastructure.logreplication.transport.client.IClientChannelAdapter;
+import org.corfudb.runtime.proto.service.CorfuMessage.RequestMsg;
+import org.corfudb.runtime.proto.service.CorfuMessage.ResponseMsg;
 import org.corfudb.util.NodeLocator;
 
+import javax.annotation.Nonnull;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -38,8 +39,8 @@ public class GRPCLogReplicationClientChannelAdapter extends IClientChannelAdapte
     private final Map<String, LogReplicationChannelBlockingStub> blockingStubMap;
     private final Map<String, LogReplicationChannelStub> asyncStubMap;
 
-    private StreamObserver<CorfuMessage> requestObserver;
-    private StreamObserver<CorfuMessage> responseObserver;
+    private StreamObserver<RequestMsg> requestObserver;
+    private StreamObserver<ResponseMsg> responseObserver;
 
     private ExecutorService executorService;
 
@@ -50,7 +51,10 @@ public class GRPCLogReplicationClientChannelAdapter extends IClientChannelAdapte
     volatile CompletableFuture<Void> connectionFuture;
 
     /** Construct client for accessing LogReplicationService server using the existing channel. */
-    public GRPCLogReplicationClientChannelAdapter(String localClusterId, ClusterDescriptor remoteClusterDescriptor, LogReplicationClientRouter adapter) {
+    public GRPCLogReplicationClientChannelAdapter(
+            String localClusterId,
+            ClusterDescriptor remoteClusterDescriptor,
+            LogReplicationClientRouter adapter) {
         super(localClusterId, remoteClusterDescriptor, adapter);
 
         this.channelMap = new HashMap<>();
@@ -98,17 +102,17 @@ public class GRPCLogReplicationClientChannelAdapter extends IClientChannelAdapte
     }
 
     @Override
-    public void send(String endpoint, CorfuMessage msg) {
+    public void send(@Nonnull String endpoint, @Nonnull RequestMsg msg) {
         // Check the connection future. If connected, continue with sending the message.
         // If timed out, return a exceptionally completed with the timeout.
-        switch (msg.getType()) {
-            case LOG_REPLICATION_ENTRY:
+        switch (msg.getPayload().getPayloadCase()) {
+            case LR_ENTRY_REQUEST:
                 replicate(endpoint, msg);
                 break;
-            case LOG_REPLICATION_QUERY_LEADERSHIP:
+            case LR_LEADERSHIP_REQUEST:
                 queryLeadership(endpoint, msg);
                 break;
-            case LOG_REPLICATION_METADATA_REQUEST:
+            case LR_METADATA_REQUEST:
                 requestMetadata(endpoint, msg);
                 break;
             default:
@@ -116,45 +120,47 @@ public class GRPCLogReplicationClientChannelAdapter extends IClientChannelAdapte
         }
     }
 
-    private void queryLeadership(String endpoint, CorfuMessage msg) {
+    private void queryLeadership(String endpoint, RequestMsg msg) {
         try {
-            if(blockingStubMap.containsKey(endpoint)) {
-                CorfuMessage response = blockingStubMap.get(endpoint).withWaitForReady().queryLeadership(msg);
+            if (blockingStubMap.containsKey(endpoint)) {
+                ResponseMsg response = blockingStubMap.get(endpoint).withWaitForReady().queryLeadership(msg);
                 receive(response);
             } else {
-                log.warn("Stub not found for remote endpoint {}. Dropping message of type {}", endpoint, msg.getType());
+                log.warn("Stub not found for remote endpoint {}. Dropping message of type {}",
+                        endpoint, msg.getPayload().getPayloadCase());
             }
         } catch (Exception e) {
-            log.error("Caught exception while sending message to query leadership status id {}", msg.getRequestID(), e);
-            getRouter().completeExceptionally(msg.getRequestID(), e);
+            log.error("Caught exception while sending message to query leadership status id {}", msg.getHeader().getRequestId(), e);
+            getRouter().completeExceptionally(msg.getHeader().getRequestId(), e);
         }
     }
 
-    private void requestMetadata(String endpoint, CorfuMessage msg) {
+    private void requestMetadata(String endpoint, RequestMsg msg) {
         try {
-            if(blockingStubMap.containsKey(endpoint)) {
-                CorfuMessage response = blockingStubMap.get(endpoint).withWaitForReady().negotiate(msg);
+            if (blockingStubMap.containsKey(endpoint)) {
+                ResponseMsg response = blockingStubMap.get(endpoint).withWaitForReady().negotiate(msg);
                 receive(response);
             } else {
-                log.warn("Stub not found for remote endpoint {}. Dropping message of type {}", endpoint, msg.getType());
+                log.warn("Stub not found for remote endpoint {}. Dropping message of type {}",
+                        endpoint, msg.getPayload().getPayloadCase());
             }
         } catch (Exception e) {
-            log.error("Caught exception while sending message to query metadata id={}", msg.getRequestID(), e);
-            getRouter().completeExceptionally(msg.getRequestID(), e);
+            log.error("Caught exception while sending message to query metadata id={}", msg.getHeader().getRequestId(), e);
+            getRouter().completeExceptionally(msg.getHeader().getRequestId(), e);
         }
     }
 
-    private void replicate(String endpoint, CorfuMessage msg) {
-        if(requestObserver == null) {
-            responseObserver = new StreamObserver<CorfuMessage>() {
+    private void replicate(String endpoint, RequestMsg msg) {
+        if (requestObserver == null) {
+            responseObserver = new StreamObserver<ResponseMsg>() {
                 @Override
-                public void onNext(CorfuMessage response) {
+                public void onNext(ResponseMsg response) {
                     try {
-                        log.info("Received ACK for {}", response.getRequestID());
+                        log.info("Received ACK for {}", response.getHeader().getRequestId());
                         receive(response);
                     } catch (Exception e) {
                         log.error("Caught exception while receiving ACK", e);
-                        getRouter().completeExceptionally(response.getRequestID(), e);
+                        getRouter().completeExceptionally(response.getHeader().getRequestId(), e);
                         requestObserver = null;
                     }
                 }
@@ -162,7 +168,7 @@ public class GRPCLogReplicationClientChannelAdapter extends IClientChannelAdapte
                 @Override
                 public void onError(Throwable t) {
                     log.error("Error from response observer", t);
-                    getRouter().completeExceptionally(msg.getRequestID(), t);
+                    getRouter().completeExceptionally(msg.getHeader().getRequestId(), t);
                     requestObserver = null;
                 }
 
@@ -178,11 +184,12 @@ public class GRPCLogReplicationClientChannelAdapter extends IClientChannelAdapte
             if(asyncStubMap.containsKey(endpoint)) {
                 requestObserver = asyncStubMap.get(endpoint).replicate(responseObserver);
             } else {
-                log.error("No stub found for remote endpoint {}. Message dropped type={}", endpoint, msg.getType());
+                log.error("No stub found for remote endpoint {}. Message dropped type={}",
+                        endpoint, msg.getPayload().getPayloadCase());
             }
         }
 
-        log.info("Send replication entry: {}", msg.getRequestID());
+        log.info("Send replication entry: {}", msg.getHeader().getRequestId());
         if (responseObserver != null) {
             // Send log replication entries across channel
             requestObserver.onNext(msg);

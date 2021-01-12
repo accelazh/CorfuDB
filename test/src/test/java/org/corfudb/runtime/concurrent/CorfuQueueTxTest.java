@@ -32,6 +32,8 @@ import org.corfudb.runtime.collections.TableOptions;
 import org.corfudb.runtime.exceptions.TransactionAbortedException;
 import org.corfudb.runtime.object.transactions.AbstractTransactionsTest;
 import org.corfudb.runtime.object.transactions.TransactionType;
+import org.corfudb.runtime.proto.RpcCommon;
+import org.corfudb.runtime.proto.RpcCommon.UuidMsg;
 import org.junit.Test;
 
 /**
@@ -170,17 +172,17 @@ public class CorfuQueueTxTest extends AbstractTransactionsTest {
 
         // Create & Register the table.
         // This is required to initialize the table for the current corfu client.
-        Table<Messages.Uuid, Messages.Uuid, Message> conflictTable =
+        Table<UuidMsg, UuidMsg, Message> conflictTable =
                 shimStore.openTable(
                         someNamespace,
                         conflictTableName,
-                        Messages.Uuid.class,
-                        Messages.Uuid.class,
+                        UuidMsg.class,
+                        UuidMsg.class,
                         null,
                         // TableOptions includes option to choose - Memory/Disk based corfu table.
                         TableOptions.builder().build());
 
-        Messages.Uuid key = Messages.Uuid.newBuilder().setLsb(0L).setMsb(0L).build();
+        UuidMsg key = UuidMsg.newBuilder().setLsb(0L).setMsb(0L).build();
         ExampleSchemas.ManagedMetadata value = ExampleSchemas.ManagedMetadata.newBuilder().setCreateUser("simpleValue").build();
 
         Table<Queue.CorfuGuidMsg, ExampleSchemas.ExampleValue, Queue.CorfuQueueMetadataMsg> corfuQueue =
@@ -200,7 +202,7 @@ public class CorfuQueueTxTest extends AbstractTransactionsTest {
                 try {
                     ManagedTxnContext txn = shimStore.txn(someNamespace);
                     Long coinToss = new Random().nextLong() % numConflictKeys;
-                    Messages.Uuid conflictKey = Messages.Uuid.newBuilder().setMsb(coinToss).build();
+                    UuidMsg conflictKey = UuidMsg.newBuilder().setMsb(coinToss).build();
                     txn.putRecord(conflictTable, conflictKey, conflictKey);
                     txn.enqueue(corfuQueue, queueData);
                     // Each transaction may or may not sleep to simulate out of order between enQ & commit

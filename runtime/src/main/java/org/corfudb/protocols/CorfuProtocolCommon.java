@@ -2,11 +2,16 @@ package org.corfudb.protocols;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.corfudb.protocols.logprotocol.OpaqueEntry;
+import org.corfudb.protocols.wireprotocol.ICorfuPayload;
 import org.corfudb.protocols.wireprotocol.SequencerMetrics;
 import org.corfudb.protocols.wireprotocol.StreamAddressRange;
 import org.corfudb.protocols.wireprotocol.Token;
+import org.corfudb.runtime.LogReplication;
 import org.corfudb.runtime.exceptions.SerializerException;
 import org.corfudb.runtime.proto.RpcCommon.LayoutMsg;
 import org.corfudb.runtime.proto.RpcCommon.SequencerMetricsMsg;
@@ -25,10 +30,7 @@ import org.roaringbitmap.longlong.Roaring64NavigableMap;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -79,6 +81,50 @@ public class CorfuProtocolCommon {
                 .setLsb(uuid.getLeastSignificantBits())
                 .setMsb(uuid.getMostSignificantBits())
                 .build();
+    }
+
+    public static LogReplication.LogReplicationEntryMsg generateAck(LogReplication.LogReplicationEntryMetadata metadata) {
+        return LogReplication.LogReplicationEntryMsg.newBuilder().setMetadata(metadata).build();
+    }
+
+    public static List<OpaqueEntry> extractOpaqueEntries(byte[] array) {
+        ArrayList<OpaqueEntry> opaqueEntryList = new ArrayList<>();
+        ByteBuf dataBuf = Unpooled.copiedBuffer(array);
+
+        if (dataBuf.capacity() == 0) return opaqueEntryList;
+
+        int opaqueEntryListSize = ICorfuPayload.fromBuffer(dataBuf, Integer.class);
+        for (int i = 0; i < opaqueEntryListSize; i++) {
+            opaqueEntryList.add(OpaqueEntry.deserialize(dataBuf));
+        }
+
+        return opaqueEntryList;
+    }
+
+    public static List<OpaqueEntry> extractOpaqueEntries(LogReplication.LogReplicationEntryMsg message) {
+        return extractOpaqueEntries(message.getData().toByteArray());
+    }
+
+    public static byte[] generatePayload(List<OpaqueEntry> opaqueEntryList) {
+        ByteBuf buf = Unpooled.buffer();
+        Integer size = opaqueEntryList.size();
+        ICorfuPayload.serialize(buf, size);
+
+        for (OpaqueEntry opaqueEntry : opaqueEntryList) {
+            OpaqueEntry.serialize(buf, opaqueEntry);
+        }
+        return buf.array();
+    }
+
+    public static byte[] generatePayload(OpaqueEntry... opaqueEntryList) {
+        ByteBuf buf = Unpooled.buffer();
+        Integer size = opaqueEntryList.length;
+        ICorfuPayload.serialize(buf, size);
+
+        for (OpaqueEntry opaqueEntry : opaqueEntryList) {
+            OpaqueEntry.serialize(buf, opaqueEntry);
+        }
+        return buf.array();
     }
 
     /**

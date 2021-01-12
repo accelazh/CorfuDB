@@ -2,6 +2,8 @@ package org.corfudb.infrastructure.logreplication;
 
 import static java.lang.Thread.sleep;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.corfudb.protocols.CorfuProtocolCommon.extractOpaqueEntries;
+import static org.corfudb.protocols.CorfuProtocolCommon.generatePayload;
 
 
 import com.google.common.reflect.TypeToken;
@@ -17,6 +19,8 @@ import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+
+import com.google.protobuf.ByteString;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.common.compression.Codec;
 import org.corfudb.common.util.ObservableValue;
@@ -42,8 +46,8 @@ import org.corfudb.infrastructure.logreplication.replication.send.logreader.LogE
 import org.corfudb.infrastructure.logreplication.replication.send.logreader.SnapshotReader;
 import org.corfudb.infrastructure.logreplication.replication.send.logreader.StreamsSnapshotReader;
 import org.corfudb.protocols.wireprotocol.TokenResponse;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntry;
 import org.corfudb.runtime.CorfuRuntime;
+import org.corfudb.runtime.LogReplication.LogReplicationEntryMsg;
 import org.corfudb.runtime.collections.CorfuTable;
 import org.corfudb.runtime.view.AbstractViewTest;
 import org.junit.After;
@@ -250,7 +254,7 @@ public class LogReplicationFSMTest extends AbstractViewTest implements Observer 
 
         // Block until the snapshot sync completes and next transition occurs.
         // The transition should happen to IN_LOG_ENTRY_SYNC state.
-        Queue<LogReplicationEntry> listenerQueue = ((TestDataSender) dataSender).getEntryQueue();
+        Queue<LogReplicationEntryMsg> listenerQueue = ((TestDataSender) dataSender).getEntryQueue();
 
         while(!fsm.getState().getType().equals(LogReplicationStateType.WAIT_SNAPSHOT_APPLY)) {
             transitionAvailable.acquire();
@@ -264,8 +268,8 @@ public class LogReplicationFSMTest extends AbstractViewTest implements Observer 
         assertThat(listenerQueue.size()).isEqualTo(NUM_ENTRIES);
 
         for (int i = 0; i < NUM_ENTRIES; i++) {
-            assertThat(listenerQueue.poll().getPayload())
-                    .isEqualTo( String.format(PAYLOAD_FORMAT, i).getBytes());
+            assertThat(listenerQueue.poll().getData())
+                    .isEqualTo(ByteString.copyFrom(String.format(PAYLOAD_FORMAT, i).getBytes()));
         }
     }
 
@@ -341,7 +345,7 @@ public class LogReplicationFSMTest extends AbstractViewTest implements Observer 
 
         assertThat(fsm.getState().getType()).isEqualTo(LogReplicationStateType.WAIT_SNAPSHOT_APPLY);
 
-        Queue<LogReplicationEntry> listenerQueue = ((TestDataSender) dataSender).getEntryQueue();
+        Queue<LogReplicationEntryMsg> listenerQueue = ((TestDataSender) dataSender).getEntryQueue();
 
         assertThat(listenerQueue.size()).isEqualTo(NUM_ENTRIES);
 
@@ -351,8 +355,8 @@ public class LogReplicationFSMTest extends AbstractViewTest implements Observer 
         assertThat(fsm.getState().getType()).isEqualTo(LogReplicationStateType.IN_LOG_ENTRY_SYNC);
 
         for (int i=0; i<NUM_ENTRIES; i++) {
-            assertThat(listenerQueue.poll().getPayload())
-                    .isEqualTo( String.format(PAYLOAD_FORMAT, i).getBytes());
+            assertThat(listenerQueue.poll().getData())
+                    .isEqualTo(ByteString.copyFrom(String.format(PAYLOAD_FORMAT, i).getBytes()));
         }
     }
 
@@ -593,6 +597,7 @@ public class LogReplicationFSMTest extends AbstractViewTest implements Observer 
                 // Wait until some thread is waiting to acquire...
             }
             transitionAvailable.release();
+            System.out.println();
             // log.debug("Transition::#"  + transitionObservable.getValue() + "::" + fsm.getState().getType());
         } else if (obs == snapshotMessageCounterObservable) {
             if (limitSnapshotMessages == snapshotMessageCounterObservable.getValue() && observeSnapshotSync) {

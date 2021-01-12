@@ -4,23 +4,23 @@ import io.netty.channel.ChannelHandlerContext;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
-import org.corfudb.infrastructure.logreplication.replication.receive.LogReplicationSinkManager;
 import org.corfudb.infrastructure.logreplication.replication.receive.LogReplicationMetadataManager;
+import org.corfudb.infrastructure.logreplication.replication.receive.LogReplicationSinkManager;
 import org.corfudb.protocols.wireprotocol.CorfuMsg;
-import org.corfudb.protocols.wireprotocol.CorfuMsgType;
-import org.corfudb.protocols.wireprotocol.CorfuPayloadMsg;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntry;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationLeadershipLoss;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationMetadataResponse;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationQueryLeaderShipResponse;
-import org.corfudb.protocols.wireprotocol.logreplication.MessageType;
+import org.corfudb.runtime.LogReplication;
+import org.corfudb.runtime.LogReplication.LogReplicationEntryType;
+import org.corfudb.runtime.proto.service.CorfuMessage;
 import org.corfudb.runtime.proto.service.CorfuMessage.RequestMsg;
+import org.corfudb.runtime.proto.service.CorfuMessage.RequestPayloadMsg.PayloadCase;
 
 import javax.annotation.Nonnull;
 import java.lang.invoke.MethodHandles;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.corfudb.protocols.service.CorfuProtocolLogReplication.getLeadershipLoss;
+import static org.corfudb.protocols.service.CorfuProtocolMessage.getResponseMsg;
 
 /**
  * This class represents the Log Replication Server, which is
@@ -47,9 +47,6 @@ public class LogReplicationServer extends AbstractServer {
     private final AtomicBoolean isLeader = new AtomicBoolean(false);
 
     private final AtomicBoolean isActive = new AtomicBoolean(false);
-
-    @Getter(onMethod_={@Override})
-    private final HandlerMethods handler = HandlerMethods.generateHandler(MethodHandles.lookup(), this);
 
     /**
      * RequestHandlerMethods for the LogReplication server
@@ -94,43 +91,51 @@ public class LogReplicationServer extends AbstractServer {
 
     /* ************ Server Handlers ************ */
 
-    @ServerHandler(type = CorfuMsgType.LOG_REPLICATION_ENTRY)
-    private void handleLogReplicationEntry(CorfuPayloadMsg<LogReplicationEntry> msg, ChannelHandlerContext ctx, IServerRouter r) {
+    @RequestHandler(type = PayloadCase.LR_ENTRY_REQUEST)
+    private void handleLrEntryRequest(@Nonnull RequestMsg request,
+                                      @Nonnull ChannelHandlerContext ctx,
+                                      @Nonnull IServerRouter router) {
         log.trace("Log Replication Entry received by Server.");
 
-        if (isLeader(msg, r)) {
+        if (isLeader(request, ctx, router)) {
             // Forward the received message to the Sink Manager for apply
-            LogReplicationEntry ack = sinkManager.receive(msg.getPayload());
+            LogReplication.LogReplicationEntryMsg ack =
+                    sinkManager.receive(request.getPayload().getLrEntryRequest());
 
             if (ack != null) {
-                long ts = ack.getMetadata().getMessageMetadataType().equals(MessageType.LOG_ENTRY_REPLICATED) ?
+                long ts = ack.getMetadata().getEntryType().equals(LogReplicationEntryType.LOG_ENTRY_REPLICATED) ?
                         ack.getMetadata().getTimestamp() : ack.getMetadata().getSnapshotTimestamp();
                 log.info("Sending ACK {} on {} to Client ", ack.getMetadata(), ts);
-                r.sendResponse(msg, CorfuMsgType.LOG_REPLICATION_ENTRY.payloadMsg(ack));
+                CorfuMessage.ResponsePayloadMsg payload = getLogEntryResponse(request);
+                CorfuMessage.ResponseMsg response = getResponseMsg(request.getHeader(), payload);
+                router.sendResponse(response, ctx);
             }
         } else {
             log.warn("Dropping log replication entry as this node is not the leader.");
         }
     }
 
-    @ServerHandler(type = CorfuMsgType.LOG_REPLICATION_METADATA_REQUEST)
-    private void handleMetadataRequest(CorfuMsg msg, ChannelHandlerContext ctx, IServerRouter r) {
+    private CorfuMessage.ResponsePayloadMsg getLogEntryResponse(RequestMsg request) {
+        LogReplication.LogReplicationEntryMsg payload = sinkManager.receive(
+                request.getPayload().getLrEntryRequest());
+        return CorfuMessage.ResponsePayloadMsg.newBuilder()
+                .setLrEntryResponse(payload).build();
+    }
+
+    @RequestHandler(type = PayloadCase.LR_METADATA_REQUEST)
+    private void handleMetadataRequest(@Nonnull RequestMsg request,
+                                       @Nonnull ChannelHandlerContext ctx,
+                                       @Nonnull IServerRouter router) {
         log.info("Log Replication Metadata Request received by Server.");
 
-        if (isLeader(msg, r)) {
+        if (isLeader(request, ctx, router)) {
             LogReplicationMetadataManager metadataMgr = sinkManager.getLogReplicationMetadataManager();
+            CorfuMessage.ResponsePayloadMsg payload = getMetadataResponse(metadataMgr);
+            log.info("Send Metadata response :: {}", payload);
+            //r.sendResponse(msg, CorfuMsgType.LOG_REPLICATION_METADATA_RESPONSE.payloadMsg(response));
+            CorfuMessage.ResponseMsg response = getResponseMsg(request.getHeader(), payload);
+            router.sendResponse(response, ctx);
 
-            // TODO (Xiaoqin Ma): That's 6 independent DB calls per one request.
-            //  Can we do just one? Also, It does not look like we handle failures if one of them fails, for example.
-            LogReplicationMetadataResponse response = new LogReplicationMetadataResponse(
-                    metadataMgr.getTopologyConfigId(),
-                    metadataMgr.getVersion(),
-                    metadataMgr.getLastStartedSnapshotTimestamp(),
-                    metadataMgr.getLastTransferredSnapshotTimestamp(),
-                    metadataMgr.getLastAppliedSnapshotTimestamp(),
-                    metadataMgr.getLastProcessedLogEntryTimestamp());
-            log.info("Send Metadata response :: {}", response);
-            r.sendResponse(msg, CorfuMsgType.LOG_REPLICATION_METADATA_RESPONSE.payloadMsg(response));
 
             // If a snapshot apply is pending, start (if not started already)
             if (isSnapshotApplyPending(metadataMgr) && !sinkManager.getOngoingApply().get()) {
@@ -141,21 +146,48 @@ public class LogReplicationServer extends AbstractServer {
         }
     }
 
+    private CorfuMessage.ResponsePayloadMsg getMetadataResponse(LogReplicationMetadataManager metadataMgr) {
+        // TODO (Xiaoqin Ma): That's 6 independent DB calls per one request.
+        //  Can we do just one? Also, It does not look like we handle failures if one of them fails, for example.
+        LogReplication.LogReplicationMetadataResponseMsg payload = LogReplication.LogReplicationMetadataResponseMsg.newBuilder()
+                .setSiteConfigID(metadataMgr.getTopologyConfigId())
+                .setVersion(metadataMgr.getVersion())
+                .setSnapshotStart(metadataMgr.getLastStartedSnapshotTimestamp())
+                .setSnapshotTransferred(metadataMgr.getLastTransferredSnapshotTimestamp())
+                .setSnapshotApplied(metadataMgr.getLastAppliedSnapshotTimestamp())
+                .setLastLogEntryTimestamp(metadataMgr.getLastProcessedLogEntryTimestamp()).build();
+
+        return CorfuMessage.ResponsePayloadMsg.newBuilder()
+                .setLrMetadataResponse(payload).build();
+    }
+
+    @RequestHandler(type = PayloadCase.LR_LEADERSHIP_REQUEST)
+    private void handleLogReplicationQueryLeadership(@Nonnull RequestMsg request,
+                                                     @Nonnull ChannelHandlerContext ctx,
+                                                     @Nonnull IServerRouter router) {
+        log.debug("Log Replication Query Leadership Request received by Server.");
+        CorfuMessage.ResponsePayloadMsg payload = getLeadershipResponse(isLeader.get(), serverContext.getLocalEndpoint());
+        CorfuMessage.ResponseMsg response = getResponseMsg(request.getHeader(), payload);
+        router.sendResponse(response, ctx);
+    }
+
+    private CorfuMessage.ResponsePayloadMsg getLeadershipResponse(boolean isLeader, String endpoint) {
+        log.debug("Send Log Replication Leadership Response isLeader={}, endpoint={}", isLeader, endpoint);
+        LogReplication.LogReplicationLeadershipResponseMsg payload = LogReplication.LogReplicationLeadershipResponseMsg
+                .newBuilder()
+                .setEpoch(0)
+                .setIsLeader(isLeader)
+                .setEndpoint(endpoint).build();
+        return CorfuMessage.ResponsePayloadMsg.newBuilder()
+                .setLrLeadershipResponse(payload).build();
+    }
+
+    /* ************ Private / Utility Methods ************ */
+
     private boolean isSnapshotApplyPending(LogReplicationMetadataManager metadataMgr) {
         return (metadataMgr.getLastStartedSnapshotTimestamp() == metadataMgr.getLastTransferredSnapshotTimestamp()) &&
                 metadataMgr.getLastTransferredSnapshotTimestamp() > metadataMgr.getLastAppliedSnapshotTimestamp();
     }
-
-    @ServerHandler(type = CorfuMsgType.LOG_REPLICATION_QUERY_LEADERSHIP)
-    private void handleLogReplicationQueryLeadership(CorfuMsg msg, ChannelHandlerContext ctx, IServerRouter r) {
-        log.debug("Log Replication Query Leadership Request received by Server.");
-        LogReplicationQueryLeaderShipResponse resp = new LogReplicationQueryLeaderShipResponse(0,
-                isLeader.get(), serverContext.getLocalEndpoint());
-        log.debug("Send Log Replication Leadership Response isLeader={}, endpoint={}", resp.isLeader(), resp.getEndpoint());
-        r.sendResponse(msg, CorfuMsgType.LOG_REPLICATION_QUERY_LEADERSHIP_RESPONSE.payloadMsg(resp));
-    }
-
-    /* ************ Private / Utility Methods ************ */
 
     /**
      * Verify if current node is still the lead receiving node.
@@ -163,7 +195,9 @@ public class LogReplicationServer extends AbstractServer {
      * @return true, if leader node.
      *         false, otherwise.
      */
-    private synchronized boolean isLeader(CorfuMsg msg, IServerRouter r) {
+    private synchronized boolean isLeader(@Nonnull RequestMsg request,
+                                          @Nonnull ChannelHandlerContext ctx,
+                                          @Nonnull IServerRouter router) {
         // If the current cluster has switched to the active role (no longer the receiver) or it is no longer the leader,
         // skip message processing (drop received message) and nack on leadership (loss of leadership)
         // This will re-trigger leadership discovery on the sender.
@@ -171,13 +205,15 @@ public class LogReplicationServer extends AbstractServer {
 
         if (lostLeadership) {
             log.warn("This node has changed, active={}, leader={}. Dropping message type={}, id={}", isActive.get(),
-                    isLeader.get(), msg.getMsgType(), msg.getRequestID());
-            LogReplicationLeadershipLoss payload = new LogReplicationLeadershipLoss(serverContext.getLocalEndpoint());
-            r.sendResponse(msg, CorfuMsgType.LOG_REPLICATION_LEADERSHIP_LOSS.payloadMsg(payload));
+                    isLeader.get(), request.getPayload().getPayloadCase(), request.getHeader().getRequestId());
+            CorfuMessage.ResponsePayloadMsg payload = getLeadershipLoss(serverContext.getLocalEndpoint());
+            CorfuMessage.ResponseMsg response = getResponseMsg(request.getHeader(), payload);
+            router.sendResponse(response, ctx);
         }
 
         return !lostLeadership;
     }
+
 
     /* ************ Public Methods ************ */
 

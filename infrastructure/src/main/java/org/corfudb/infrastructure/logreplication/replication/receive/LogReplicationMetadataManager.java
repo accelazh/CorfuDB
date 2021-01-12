@@ -7,13 +7,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata;
 import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata.LogReplicationMetadataKey;
 import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata.LogReplicationMetadataVal;
+import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata.ReplicationEvent;
+import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata.ReplicationEventKey;
 import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata.ReplicationStatusKey;
 import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata.ReplicationStatusVal;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata.ReplicationEventKey;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationMetadata.ReplicationEvent;
-import org.corfudb.protocols.wireprotocol.logreplication.LogReplicationEntry;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.CorfuStoreMetadata;
+import org.corfudb.runtime.LogReplication;
 import org.corfudb.runtime.collections.CorfuRecord;
 import org.corfudb.runtime.collections.CorfuStore;
 import org.corfudb.runtime.collections.CorfuStoreEntry;
@@ -316,12 +316,12 @@ public class LogReplicationMetadataManager {
         log.debug("Commit snapshot transfer complete timestamp={}, for topologyConfigId={}", ts, topologyConfigId);
     }
 
-    public void setSnapshotAppliedComplete(LogReplicationEntry entry) {
+    public void setSnapshotAppliedComplete(LogReplication.LogReplicationEntryMsg entry) {
         CorfuStoreMetadata.Timestamp timestamp = corfuStore.getTimestamp();
         long persistedTopologyConfigId = query(timestamp, LogReplicationMetadataType.TOPOLOGY_CONFIG_ID);
         long persistedSnapshotStart = query(timestamp, LogReplicationMetadataType.LAST_SNAPSHOT_STARTED);
         long persistedSnapshotTransferComplete = query(timestamp, LogReplicationMetadataType.LAST_SNAPSHOT_TRANSFERRED);
-        long topologyConfigId = entry.getMetadata().getTopologyConfigId();
+        long topologyConfigId = entry.getMetadata().getSiteConfigID();
         long ts = entry.getMetadata().getSnapshotTimestamp();
 
         if (topologyConfigId != persistedTopologyConfigId || ts != persistedSnapshotStart
