@@ -199,7 +199,7 @@ public class DefaultClusterManager extends CorfuReplicationClusterManagerBaseAda
         for (int i = 0; i < activeNodeNames.size(); i++) {
             log.info("Active Cluster Name {}, IpAddress {}", activeNodeNames.get(i), activeNodeHosts.get(i));
             NodeDescriptor nodeInfo = new NodeDescriptor(activeNodeHosts.get(i),
-                    activeLogReplicationPort, ACTIVE_CLUSTER_NAME, UUID.fromString(activeNodeIds.get(i)), UUID.fromString(standbyNodeIds.get(i)));
+                    activeLogReplicationPort, ACTIVE_CLUSTER_NAME, UUID.fromString(activeNodeIds.get(i)), UUID.fromString(activeNodeIds.get(i)));
             activeCluster.getNodesDescriptors().add(nodeInfo);
         }
 

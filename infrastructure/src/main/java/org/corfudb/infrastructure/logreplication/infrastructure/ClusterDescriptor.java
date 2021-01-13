@@ -90,25 +90,15 @@ public class ClusterDescriptor {
     /**
      * Get descriptor for a specific endpoint
      *
-     * @param endpoint node's endpoint
      * @param nodeId node's id
      * @return endpoint's node descriptor or null if it does not belong to this cluster.
      */
-    public NodeDescriptor getNode(String endpoint, Optional<String> nodeId) {
-        if (!nodeId.isPresent()) {
-            for (NodeDescriptor node : nodesDescriptors) {
-                if(node.getEndpoint().equals(endpoint)) {
-                    return node;
-                }
-            }
-        } else {
-            for (NodeDescriptor node : nodesDescriptors) {
-                if(node.getRealNodeId().toString().equals(nodeId.get())) {
-                    return node;
-                }
+    public NodeDescriptor getNode(String nodeId) {
+        for (NodeDescriptor node : nodesDescriptors) {
+            if(node.getRealNodeId().toString().equals(nodeId)) {
+                return node;
             }
         }
-
         return null;
     }
 }

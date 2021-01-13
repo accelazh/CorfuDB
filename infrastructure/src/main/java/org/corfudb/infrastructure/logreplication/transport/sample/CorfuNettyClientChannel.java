@@ -145,7 +145,7 @@ public class CorfuNettyClientChannel extends SimpleChannelInboundHandler<CorfuMe
     public void channelActive(ChannelHandlerContext ctx) {
         log.info("channelActive: Outgoing connection established to: {} from id={}", ctx.channel().remoteAddress(), ctx.channel().localAddress());
         channel = ctx.channel();
-        adapter.onConnectionUp(node.getEndpoint());
+        adapter.onConnectionUp(node.getRealNodeId().toString());
     }
 
     /**
@@ -157,11 +157,11 @@ public class CorfuNettyClientChannel extends SimpleChannelInboundHandler<CorfuMe
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         log.info("channelActive: Outgoing connection lost to: {} from id={}", ctx.channel().remoteAddress(), ctx.channel().localAddress());
-        adapter.onConnectionDown(node.getEndpoint());
+        adapter.onConnectionDown(node.getRealNodeId().toString());
     }
 
     public void close() {
-        log.debug("Close channel to {}", node.getEndpoint());
+        log.debug("Close channel to {}", node.getRealNodeId());
         shutdown = true;
         adapter.onError(new NetworkException("Channel closed", node.getClusterId()));
         if (channel != null && channel.isOpen()) {
@@ -217,7 +217,7 @@ public class CorfuNettyClientChannel extends SimpleChannelInboundHandler<CorfuMe
         if (shutdown) {
             return;
         }
-        log.info("Connect Async {}", node.getEndpoint());
+        log.info("Connect Async {}", node.getRealNodeId());
         // Use the bootstrap to create a new channel.
         ChannelFuture f = bootstrap.connect(node.getHost(), Integer.valueOf(node.getPort()));
         f.addListener((ChannelFuture cf) -> channelConnectionFutureHandler(cf, bootstrap));
